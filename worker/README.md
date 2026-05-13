@@ -6,7 +6,11 @@ This Cloudflare Worker provides an optional public-stat fetch layer for the stat
 
 `GET /api/player?name=PLAYERNAME&platform=pc`
 
+`GET /api/diagnostics?name=PLAYERNAME&platform=pc`
+
 Supported platforms: `pc`, `ps4`, `xboxone`
+
+The diagnostics endpoint returns adapter URLs, HTTP status, content type, raw previews, parse status, and readable errors. It is for debugging public no-auth source behavior only and exposes no secrets.
 
 ## Option A - Deploy With Cloudflare Plugin
 

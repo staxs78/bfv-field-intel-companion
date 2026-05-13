@@ -208,6 +208,7 @@
     $("copyCurrentLinks").addEventListener("click", () => copyText(formatLinks(currentLinks), "Source links copied."));
     $("clearAllData").addEventListener("click", clearAllData);
     $("manualPaste").addEventListener("input", handleManualPaste);
+    $("parsePastedStats").addEventListener("click", handleParsePastedStats);
     $("saveApiBaseUrl").addEventListener("click", saveApiBaseUrl);
     $("testApiBaseUrl").addEventListener("click", testApiBaseUrl);
     $("clearApiBaseUrl").addEventListener("click", clearApiBaseUrl);
@@ -399,8 +400,13 @@
 
 ${payload.fallback || "Open public source link and paste stats manually."}
 
+Could be wrong name, private/missing stats, upstream downtime, or unsupported source response.
+
 Warnings:
 ${(payload.warnings || []).join("\n") || "None"}
+
+Adapter diagnostics:
+${formatAdapterDebug(payload.adapterDebug)}
 
 Fallback links:
 ${formatLinks(currentLinks)}`;
@@ -417,6 +423,9 @@ Source: ${payload.source || "public source"}
 Warnings:
 ${lastLookupWarnings.join("\n") || "None"}
 
+Adapter diagnostics:
+${formatAdapterDebug(payload.adapterDebug)}
+
 Parsed fields:
 ${JSON.stringify(parsed, null, 2)}
 
@@ -426,6 +435,8 @@ ${D.disclaimers.primary}`;
       $("fetchResult").textContent = `${D.disclaimers.workerFetch}
 
 Reason: ${error.message || error}
+
+Could be wrong name, private/missing stats, upstream downtime, or unsupported source response.
 
 Fallback links:
 ${formatLinks(currentLinks)}`;
@@ -463,12 +474,27 @@ ${formatLinks(currentLinks)}`;
   }
 
   function handleManualPaste() {
-    const parsed = sourceAdapters.statbits.parseResponse($("manualPaste").value);
-    if (parsed && !parsed.error) {
+    parsePastedStats(false);
+  }
+
+  function handleParsePastedStats() {
+    parsePastedStats(true);
+  }
+
+  function parsePastedStats(showEmptyMessage) {
+    const parsed = parseRawStatsText($("manualPaste").value);
+    if (parsed && Object.keys(parsed).length) {
       lastLookupStats = parsed;
       applyParsedStatsToLookup(parsed);
       $("fetchResult").textContent = `Manual paste parsed:\n${JSON.stringify(parsed, null, 2)}`;
+      toast("Pasted stats parsed. Review before saving.");
+      return parsed;
     }
+    if (showEmptyMessage) {
+      $("fetchResult").textContent = "No usable stats found in pasted text. Keep manual entry available and verify the source text.";
+      toast("No usable pasted stats found.");
+    }
+    return null;
   }
 
   function applyParsedStatsToLookup(parsed) {
@@ -537,8 +563,8 @@ ${formatLinks(currentLinks)}`;
       return;
     }
     currentLinks = currentLinks.length ? currentLinks : buildSourceLinks(name, $("lookupPlatform").value, $("lookupPlayerId").value);
-    const pasted = sourceAdapters.statbits.parseResponse($("manualPaste").value);
-    const parsed = lastLookupStats || (pasted && !pasted.error ? pasted : null);
+    const pasted = parseRawStatsText($("manualPaste").value);
+    const parsed = lastLookupStats || (pasted && Object.keys(pasted).length ? pasted : null);
     const player = {
       ...D.defaultPlayer,
       id: uid(),
@@ -1241,6 +1267,75 @@ Reminder: ${D.disclaimers.primary}`, "Player summary copied.");
 
   function renderStorageSummary() {
     $("storageSummary").textContent = `${state.players.length} players, ${state.serverChecks.length} server checks, and ${state.evidence.length} evidence entries are stored in localStorage under ${D.storageKey}.`;
+  }
+
+  function parseRawStatsText(raw) {
+    const value = text(raw);
+    if (!value) return {};
+    const parsed = {};
+    assignIfFound(parsed, "kd", value, [
+      /\bK\/D\s*[:#-]?\s*([\d,.]+)/i,
+      /\bKD\s*[:#-]?\s*([\d,.]+)/i,
+      /([\d,.]+)\s*K\/D/i
+    ]);
+    assignIfFound(parsed, "kpm", value, [/\bKPM\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*KPM/i]);
+    assignIfFound(parsed, "spm", value, [/\bSPM\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*SPM/i]);
+    assignIfFound(parsed, "kills", value, [/\bkills?\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*kills?\b/i]);
+    assignIfFound(parsed, "deaths", value, [/\bdeaths?\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*deaths?\b/i]);
+    assignIfFound(parsed, "rank", value, [/\brank\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*rank/i]);
+    assignIfFound(parsed, "accuracy", value, [/\baccuracy\s*[:#-]?\s*([\d,.]+)%?/i, /([\d,.]+)%\s*accuracy/i]);
+    assignIfFound(parsed, "headshot", value, [
+      /\bheadshots?\s*[:#-]?\s*([\d,.]+)%?/i,
+      /\bHS\s*%?\s*[:#-]?\s*([\d,.]+)%?/i,
+      /([\d,.]+)%\s*headshots?/i
+    ]);
+    assignIfFound(parsed, "planeKills", value, [/\bplane kills?\s*[:#-]?\s*([\d,.]+)/i, /\bair kills?\s*[:#-]?\s*([\d,.]+)/i]);
+    assignIfFound(parsed, "tankKills", value, [/\btank kills?\s*[:#-]?\s*([\d,.]+)/i, /\barmor kills?\s*[:#-]?\s*([\d,.]+)/i]);
+    assignIfFound(parsed, "vehicleKills", value, [/\bvehicle kills?\s*[:#-]?\s*([\d,.]+)/i, /\bvehicles kills?\s*[:#-]?\s*([\d,.]+)/i]);
+    const hours = parseHoursFromText(value);
+    if (hours !== null) parsed.hoursPlayed = String(hours);
+    return parsed;
+  }
+
+  function assignIfFound(target, key, value, patterns) {
+    for (const pattern of patterns) {
+      const match = value.match(pattern);
+      if (match) {
+        target[key] = cleanNumber(match[1]);
+        return;
+      }
+    }
+  }
+
+  function parseHoursFromText(value) {
+    const compact = value.match(/(\d+(?:\.\d+)?)h(?:\s+(\d+)m)?/i);
+    if (compact) {
+      return Math.round((parseFloat(compact[1]) + parseFloat(compact[2] || "0") / 60) * 100) / 100;
+    }
+    const labeled = value.match(/\b(?:time played|hours played|playtime)\s*[:#-]?\s*([\d,.]+)\s*h(?:ours?)?/i);
+    if (labeled) return parseFloat(cleanNumber(labeled[1]));
+    const plain = value.match(/([\d,.]+)\s*(?:hours|hrs)\s*played/i);
+    return plain ? parseFloat(cleanNumber(plain[1])) : null;
+  }
+
+  function cleanNumber(value) {
+    return String(value || "").replace(/,/g, "");
+  }
+
+  function formatAdapterDebug(adapterDebug) {
+    if (!Array.isArray(adapterDebug) || !adapterDebug.length) return "No adapter diagnostics returned.";
+    return adapterDebug
+      .map((item) => {
+        return [
+          `- ${item.name || "unknown adapter"}`,
+          `  status: ${item.httpStatus === null || item.httpStatus === undefined ? "n/a" : item.httpStatus}`,
+          `  url: ${item.url || "n/a"}`,
+          `  parsed: ${item.parsed ? "yes" : "no"}`,
+          `  error: ${item.error || "none"}`,
+          `  raw preview: ${item.rawPreview || "none"}`
+        ].join("\n");
+      })
+      .join("\n");
   }
 
   function saveApiBaseUrl() {
