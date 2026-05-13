@@ -12,6 +12,7 @@ BFV Field Intel Companion is a static fan-made personal companion for manual pub
 - No doxxing.
 - No mass reporting.
 - No EA login/private scraping.
+- No protected page scraping.
 - No CORS bypass.
 - No stealth scraping.
 - No CAPTCHA bypass.
@@ -24,6 +25,7 @@ BFV Field Intel Companion is a static fan-made personal companion for manual pub
 - Manual/public-source only is the primary workflow.
 - Optional public endpoint fetches must fail gracefully.
 - Do not invent API success.
+- Do not invent stats.
 - Do not scrape protected or private pages.
 - BFVHackers, Battlefield Tracker, BFBan, EA, and similar sites are link/manual only unless a public browser-safe endpoint is explicitly documented and proven.
 - No hidden polling or aggressive retries.

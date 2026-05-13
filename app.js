@@ -16,9 +16,11 @@
   let state = loadState();
   let currentLinks = [];
   let lastLookupStats = null;
+  let lastLookupWarnings = [];
   let selectedPlayerId = "";
   let selectedEvidenceId = "";
   let selectedServerId = "";
+  let hasPlayerDraft = false;
   let toastTimer = null;
 
   const sourceAdapters = {
@@ -130,10 +132,13 @@
         serverChecks: Array.isArray(saved.serverChecks) ? saved.serverChecks : [],
         evidence: Array.isArray(saved.evidence) ? saved.evidence : [],
         sourceStatus: saved.sourceStatus || {},
+        settings: {
+          apiBaseUrl: text(saved.settings && saved.settings.apiBaseUrl)
+        },
         lastBackupAt: saved.lastBackupAt || ""
       };
     } catch {
-      return { players: [], serverChecks: [], evidence: [], sourceStatus: {}, lastBackupAt: "" };
+      return { players: [], serverChecks: [], evidence: [], sourceStatus: {}, settings: { apiBaseUrl: "" }, lastBackupAt: "" };
     }
   }
 
@@ -151,6 +156,7 @@
       if (sourceAdapters[key]) sourceAdapters[key].status = status;
     });
     $("globalDisclaimer").textContent = D.disclaimers.primary;
+    state.settings = state.settings || { apiBaseUrl: "" };
     populateSelects();
     bindEvents();
     setDefaults();
@@ -175,7 +181,7 @@
     });
     $("quickLookup").addEventListener("click", quickLookup);
     $("generateLinks").addEventListener("click", handleGenerateLinks);
-    $("tryFetch").addEventListener("click", handleStatbitsFetch);
+    $("tryFetch").addEventListener("click", handleLiveFetch);
     $("addFromLookup").addEventListener("click", addFromLookup);
     $("copyLinks").addEventListener("click", () => copyText(formatLinks(currentLinks), "Source links copied."));
     $("clearLookup").addEventListener("click", clearLookup);
@@ -202,18 +208,23 @@
     $("copyCurrentLinks").addEventListener("click", () => copyText(formatLinks(currentLinks), "Source links copied."));
     $("clearAllData").addEventListener("click", clearAllData);
     $("manualPaste").addEventListener("input", handleManualPaste);
+    $("saveApiBaseUrl").addEventListener("click", saveApiBaseUrl);
+    $("testApiBaseUrl").addEventListener("click", testApiBaseUrl);
+    $("clearApiBaseUrl").addEventListener("click", clearApiBaseUrl);
   }
 
   function setDefaults() {
     $("serverDateTime").value = localNow();
     $("evidenceDateTime").value = localNow();
     $("reportOutput").textContent = D.reportTemplate;
+    $("apiBaseUrl").value = state.settings.apiBaseUrl || "";
+    renderApiStatus();
   }
 
   function showTab(id) {
     document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === id));
     document.querySelectorAll(".screen").forEach((screen) => screen.classList.toggle("active", screen.id === id));
-    if (id === "players" && state.players.length && !selectedPlayerId) loadPlayerForm(state.players[0].id);
+    if (id === "players" && state.players.length && !selectedPlayerId && !hasPlayerDraft) loadPlayerForm(state.players[0].id);
   }
 
   function renderAll() {
@@ -224,6 +235,7 @@
     renderEvidenceFilters();
     renderEvidenceList();
     renderStorageSummary();
+    renderApiStatus();
     if (selectedPlayerId) renderPlayerSidebars(getPlayer(selectedPlayerId));
   }
 
@@ -353,6 +365,103 @@
     }
   }
 
+  async function handleLiveFetch() {
+    const apiBaseUrl = normalizeApiBaseUrl(state.settings && state.settings.apiBaseUrl);
+    if (!apiBaseUrl) {
+      await handleStatbitsFetch();
+      return;
+    }
+
+    const player = text($("lookupName").value);
+    if (!player) {
+      toast("Enter a player name first.");
+      return;
+    }
+
+    const platform = $("lookupPlatform").value;
+    currentLinks = buildSourceLinks(player, platform, $("lookupPlayerId").value);
+    $("lookupLinks").innerHTML = renderLinks(currentLinks);
+    $("fetchResult").textContent = "Trying live Worker fetch...";
+
+    try {
+      const response = await fetch(buildWorkerUrl(apiBaseUrl, player, platform), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload) throw new Error("Worker returned malformed JSON.");
+      if (!response.ok || !payload.ok) {
+        const fallbackLinks = Array.isArray(payload.links) ? payload.links : currentLinks;
+        currentLinks = fallbackLinks.length ? fallbackLinks : currentLinks;
+        $("lookupLinks").innerHTML = renderLinks(currentLinks);
+        $("fetchResult").textContent = `${payload.error || D.disclaimers.workerFetch}
+
+${payload.fallback || "Open public source link and paste stats manually."}
+
+Warnings:
+${(payload.warnings || []).join("\n") || "None"}
+
+Fallback links:
+${formatLinks(currentLinks)}`;
+        toast(D.disclaimers.workerFetch);
+        return;
+      }
+
+      const parsed = mapNormalizedPlayer(payload.player || {});
+      lastLookupStats = parsed;
+      lastLookupWarnings = Array.isArray(payload.warnings) ? payload.warnings : [];
+      applyParsedStatsToLookup(parsed);
+      $("fetchResult").textContent = `Live fetch succeeded.
+Source: ${payload.source || "public source"}
+Warnings:
+${lastLookupWarnings.join("\n") || "None"}
+
+Parsed fields:
+${JSON.stringify(parsed, null, 2)}
+
+${D.disclaimers.primary}`;
+      toast("Live fetch parsed. Review before saving.");
+    } catch (error) {
+      $("fetchResult").textContent = `${D.disclaimers.workerFetch}
+
+Reason: ${error.message || error}
+
+Fallback links:
+${formatLinks(currentLinks)}`;
+      toast(D.disclaimers.workerFetch);
+    }
+  }
+
+  function mapNormalizedPlayer(player) {
+    return {
+      name: text(player.name),
+      platform: text(player.platform) || "pc",
+      playerId: text(player.id),
+      rank: valueOrBlank(player.rank),
+      kills: valueOrBlank(player.kills),
+      deaths: valueOrBlank(player.deaths),
+      kd: valueOrBlank(player.kd),
+      kpm: valueOrBlank(player.kpm),
+      spm: valueOrBlank(player.spm),
+      accuracy: valueOrBlank(player.accuracy),
+      headshot: valueOrBlank(player.headshotPercent),
+      hoursPlayed: valueOrBlank(player.hoursPlayed),
+      favoriteWeapon: text(player.favoriteWeapon),
+      favoriteVehicle: text(player.favoriteVehicle),
+      planeHours: valueOrBlank(player.planeHours),
+      planeKills: valueOrBlank(player.planeKills),
+      planeKpm: valueOrBlank(player.planeKpm),
+      tankHours: valueOrBlank(player.tankHours),
+      tankKills: valueOrBlank(player.tankKills),
+      vehicleKills: valueOrBlank(player.vehicleKills)
+    };
+  }
+
+  function valueOrBlank(value) {
+    return value === null || value === undefined ? "" : String(value);
+  }
+
   function handleManualPaste() {
     const parsed = sourceAdapters.statbits.parseResponse($("manualPaste").value);
     if (parsed && !parsed.error) {
@@ -363,11 +472,62 @@
   }
 
   function applyParsedStatsToLookup(parsed) {
-    const existing = selectedPlayerId ? getPlayer(selectedPlayerId) : null;
-    if (!existing) return;
-    Object.assign(existing, parsed, { updatedAt: nowIso() });
-    save();
-    renderAll();
+    const draft = {
+      ...D.defaultPlayer,
+      id: "",
+      name: text($("lookupName").value) || parsed.name || "",
+      platform: $("lookupPlatform").value || parsed.platform || "pc",
+      playerId: text($("lookupPlayerId").value) || parsed.playerId || "",
+      serverName: text($("lookupServer").value),
+      map: $("lookupMap").value,
+      contextNotes: text($("lookupNotes").value),
+      sourceLinks: currentLinks,
+      ...parsed
+    };
+    loadPlayerDraft(draft);
+  }
+
+  function loadPlayerDraft(player) {
+    selectedPlayerId = "";
+    hasPlayerDraft = true;
+    $("playerEditId").value = "";
+    setValueMap("player", {
+      Name: player.name,
+      Platform: player.platform || "pc",
+      PlayerId: player.playerId,
+      ReportStatus: player.reportStatus || "not reported",
+      ServerName: player.serverName,
+      Map: player.map,
+      Kd: player.kd,
+      Kpm: player.kpm,
+      Spm: player.spm,
+      Accuracy: player.accuracy,
+      Headshot: player.headshot,
+      Kills: player.kills,
+      Deaths: player.deaths,
+      Rank: player.rank,
+      HoursPlayed: player.hoursPlayed,
+      PlaneHours: player.planeHours,
+      PlaneKills: player.planeKills,
+      PlaneKpm: player.planeKpm,
+      TankHours: player.tankHours,
+      TankKills: player.tankKills,
+      VehicleKills: player.vehicleKills,
+      FavoriteVehicle: player.favoriteVehicle,
+      FavoriteWeapon: player.favoriteWeapon,
+      BfvhackersStatus: player.bfvhackersStatus,
+      BfbanStatus: player.bfbanStatus,
+      VideoEvidenceLink: player.videoEvidenceLink,
+      SourceLinks: Array.isArray(player.sourceLinks) ? formatLinks(player.sourceLinks) : player.sourceLinks,
+      ContextNotes: player.contextNotes,
+      SuspiciousWeaponNotes: player.suspiciousWeaponNotes,
+      SuspiciousVehicleNotes: player.suspiciousVehicleNotes,
+      VehicleHeadshotNotes: player.vehicleHeadshotNotes,
+      ScreenshotNote: player.screenshotNote,
+      ScoreboardNote: player.scoreboardNote,
+      ObservedBehavior: player.observedBehavior
+    });
+    renderPlayerSidebars(player);
   }
 
   function addFromLookup() {
@@ -416,7 +576,7 @@
       ? `<table><thead><tr><th>Player</th><th>Label</th><th>Stats</th><th>Vehicle focus</th><th>Actions</th></tr></thead><tbody>${state.players.map(playerRow).join("")}</tbody></table>`
       : '<p class="subtle">No players yet. Use Lookup or New Player.</p>';
     renderLinkedPlayerSelects();
-    if (!selectedPlayerId && state.players.length) loadPlayerForm(state.players[0].id);
+    if (!selectedPlayerId && !hasPlayerDraft && state.players.length) loadPlayerForm(state.players[0].id);
   }
 
   function playerRow(player) {
@@ -444,6 +604,7 @@
 
   function loadPlayerForm(id) {
     const player = id ? getPlayer(id) : { ...D.defaultPlayer, platform: "pc", reportStatus: "not reported" };
+    hasPlayerDraft = false;
     selectedPlayerId = player.id || "";
     $("playerEditId").value = selectedPlayerId;
     setValueMap("player", {
@@ -538,6 +699,7 @@
     if (index >= 0) state.players[index] = player;
     else state.players.unshift(player);
     selectedPlayerId = id;
+    hasPlayerDraft = false;
     currentLinks = player.sourceLinks;
     save();
     renderAll();
@@ -551,6 +713,7 @@
     const copy = { ...player, id: uid(), name: `${player.name} copy`, createdAt: nowIso(), updatedAt: nowIso() };
     state.players.unshift(copy);
     selectedPlayerId = copy.id;
+    hasPlayerDraft = false;
     save();
     renderAll();
     loadPlayerForm(copy.id);
@@ -561,6 +724,7 @@
     if (!selectedPlayerId) return toast("Select a player first.");
     state.players = state.players.filter((player) => player.id !== selectedPlayerId);
     selectedPlayerId = "";
+    hasPlayerDraft = false;
     save();
     renderAll();
     loadPlayerForm(null);
@@ -568,7 +732,7 @@
   }
 
   function renderPlayerSidebars(player) {
-    const target = player && player.id ? player : null;
+    const target = player && (player.id || player.name) ? player : null;
     if (!target) {
       $("scorePanel").innerHTML = '<p class="subtle">Select or save a player to score.</p>';
       $("vehiclePanel").innerHTML = '<p class="subtle">Select or save a player to classify focus.</p>';
@@ -578,6 +742,7 @@
     $("scorePanel").innerHTML = `
       ${labelBadge(score.label)}
       <p><strong>${score.score}/100</strong> · Confidence: ${escapeHtml(score.confidence)}</p>
+      <p class="subtle">${escapeHtml(D.disclaimers.primary)}</p>
       <p class="subtle">${escapeHtml(D.disclaimers.scoring)}</p>
       <strong>Top reasons</strong>${list(score.reasons)}
       <strong>Missing data</strong>${list(score.missing)}
@@ -960,6 +1125,9 @@ ${D.disclaimers.primary}`;
         serverChecks: Array.isArray(incoming.serverChecks) ? incoming.serverChecks : [],
         evidence: Array.isArray(incoming.evidence) ? incoming.evidence : [],
         sourceStatus: incoming.sourceStatus || {},
+        settings: {
+          apiBaseUrl: text(incoming.settings && incoming.settings.apiBaseUrl)
+        },
         lastBackupAt: incoming.lastBackupAt || nowIso()
       };
       save();
@@ -972,7 +1140,7 @@ ${D.disclaimers.primary}`;
 
   function clearAllData() {
     if (!confirm("Clear all local data for this app in this browser?")) return;
-    state = { players: [], serverChecks: [], evidence: [], sourceStatus: {}, lastBackupAt: "" };
+    state = { players: [], serverChecks: [], evidence: [], sourceStatus: {}, settings: { apiBaseUrl: "" }, lastBackupAt: "" };
     selectedPlayerId = "";
     selectedEvidenceId = "";
     selectedServerId = "";
@@ -1073,6 +1241,66 @@ Reminder: ${D.disclaimers.primary}`, "Player summary copied.");
 
   function renderStorageSummary() {
     $("storageSummary").textContent = `${state.players.length} players, ${state.serverChecks.length} server checks, and ${state.evidence.length} evidence entries are stored in localStorage under ${D.storageKey}.`;
+  }
+
+  function saveApiBaseUrl() {
+    state.settings = state.settings || { apiBaseUrl: "" };
+    state.settings.apiBaseUrl = normalizeApiBaseUrl($("apiBaseUrl").value);
+    $("apiBaseUrl").value = state.settings.apiBaseUrl;
+    save();
+    renderApiStatus();
+    toast(state.settings.apiBaseUrl ? "API Base URL saved." : "API Base URL cleared.");
+  }
+
+  async function testApiBaseUrl() {
+    saveApiBaseUrl();
+    const apiBaseUrl = normalizeApiBaseUrl(state.settings.apiBaseUrl);
+    if (!apiBaseUrl) {
+      toast("Set an API Base URL first.");
+      return;
+    }
+    $("apiStatus").textContent = "Testing Worker API...";
+    try {
+      const response = await fetch(buildWorkerUrl(apiBaseUrl, "test", "pc"), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload) throw new Error("Malformed JSON response.");
+      $("apiStatus").textContent = response.ok
+        ? `API reachable. Response: ${payload.ok ? "normalized data returned" : payload.error || "clean fallback returned"}.`
+        : `API reachable with error: ${payload.error || response.status}.`;
+      toast("API test completed.");
+    } catch (error) {
+      $("apiStatus").textContent = `API test failed: ${error.message || error}`;
+      toast("API test failed.");
+    }
+  }
+
+  function clearApiBaseUrl() {
+    state.settings = state.settings || { apiBaseUrl: "" };
+    state.settings.apiBaseUrl = "";
+    $("apiBaseUrl").value = "";
+    save();
+    renderApiStatus();
+    toast("API Base URL cleared.");
+  }
+
+  function renderApiStatus() {
+    if (!$("apiStatus")) return;
+    const apiBaseUrl = normalizeApiBaseUrl(state.settings && state.settings.apiBaseUrl);
+    $("apiStatus").textContent = apiBaseUrl
+      ? `Live fetch mode enabled. Try Live Fetch calls ${apiBaseUrl}/api/player.`
+      : "Manual/link mode enabled. Add a Cloudflare Worker URL to use Try Live Fetch.";
+  }
+
+  function normalizeApiBaseUrl(value) {
+    return text(value).replace(/\/+$/, "");
+  }
+
+  function buildWorkerUrl(apiBaseUrl, player, platform) {
+    return `${normalizeApiBaseUrl(apiBaseUrl)}/api/player?name=${encode(player)}&platform=${encode(platform || "pc")}`;
   }
 
   async function copyText(value, message) {

@@ -1,6 +1,7 @@
 const BFV_DATA = {
   appName: "BFV Field Intel Companion",
   storageKey: "bfvFieldIntelCompanion.v1",
+  settingsKey: "bfvFieldIntelCompanion.settings.v1",
   supportedPlatforms: [
     { value: "pc", label: "PC" },
     { value: "ps4", label: "PS4" },
@@ -133,11 +134,13 @@ const BFV_DATA = {
     "I observed [behavior] on [server/map/date]. Evidence available: [screenshot/video/scoreboard/source links]. Please review.",
   disclaimers: {
     primary:
-      "Stats are not proof. Use this as triage only. Do not harass. Report through official EA tools with evidence.",
+      "Stats are not proof. Use this as triage only. Do not harass. Report through official tools with evidence.",
     fan:
       "Fan-made personal companion. Not affiliated with EA, DICE, or Battlefield. No logos, artwork, ads, tracking, logins, or private scraping.",
     fetch:
       "Fetch failed or blocked. Open source link and paste stats manually.",
+    workerFetch:
+      "Live fetch failed or returned no usable stats. Open public source links and paste stats manually.",
     scoring:
       "High K/D alone is not proof. Add KPM, hours, weapon stats, and evidence before reporting."
   }

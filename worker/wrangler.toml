@@ -1,0 +1,6 @@
+name = "bfv-field-intel-companion"
+main = "worker.js"
+compatibility_date = "2026-05-13"
+
+[observability]
+enabled = true

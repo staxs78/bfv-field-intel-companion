@@ -90,7 +90,7 @@
             <label class="full">Manual paste/import<textarea id="manualPaste" rows="5" placeholder="Paste Statbits summary or manually copied public stats here."></textarea></label>
             <div class="button-row full">
               <button type="button" id="generateLinks">Generate source links</button>
-              <button type="button" id="tryFetch">Try Statbits fetch</button>
+              <button type="button" id="tryFetch">Try Live Fetch</button>
               <button type="button" id="addFromLookup">Add player to watchlist</button>
               <button type="button" id="copyLinks" class="secondary">Copy source links</button>
               <button type="button" id="clearLookup" class="secondary">Clear lookup</button>
@@ -291,6 +291,20 @@
             <h2>Settings</h2>
           </div>
         </div>
+        <section class="panel">
+          <h3>Live Fetch API</h3>
+          <div class="form-grid">
+            <label class="full">API Base URL
+              <input id="apiBaseUrl" type="url" placeholder="https://bfv-field-intel-companion.YOUR-SUBDOMAIN.workers.dev">
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="saveApiBaseUrl">Save API Base URL</button>
+            <button id="testApiBaseUrl" class="secondary">Test API</button>
+            <button id="clearApiBaseUrl" class="secondary">Clear API URL</button>
+          </div>
+          <p id="apiStatus" class="subtle"></p>
+        </section>
         <section class="panel">
           <h3>Project Boundaries</h3>
           <ul class="clean-list">
