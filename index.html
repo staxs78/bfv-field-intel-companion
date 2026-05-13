@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BFV Field Intel Companion</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">fan-made personal companion</p>
+        <h1>BFV Field Intel Companion</h1>
+        <p class="subtle">Manual-first field intelligence for public stats, evidence notes, server checks, and factual report prep.</p>
+      </div>
+      <div class="header-card">
+        <strong>Always remember</strong>
+        <span id="globalDisclaimer"></span>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="App screens">
+      <button class="tab active" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="lookup">Lookup</button>
+      <button class="tab" data-tab="players">Players</button>
+      <button class="tab" data-tab="servers">Server Checks</button>
+      <button class="tab" data-tab="evidence">Evidence</button>
+      <button class="tab" data-tab="report">Report Helper</button>
+      <button class="tab" data-tab="importExport">Import/Export</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+
+    <main>
+      <section id="dashboard" class="screen active">
+        <div class="screen-title">
+          <div>
+            <p class="eyebrow">command overview</p>
+            <h2>Dashboard</h2>
+          </div>
+          <button id="dashQuickExport" class="secondary">Export Backup</button>
+        </div>
+        <div id="dashboardStats" class="stat-grid"></div>
+        <div class="grid-two">
+          <section class="panel">
+            <h3>Quick Player Lookup</h3>
+            <div class="inline-form">
+              <input id="quickPlayer" type="text" placeholder="Player name">
+              <select id="quickPlatform"></select>
+              <button id="quickLookup">Generate Links</button>
+            </div>
+            <div id="quickLinks" class="link-stack"></div>
+          </section>
+          <section class="panel">
+            <h3>Source Status</h3>
+            <div id="dashboardSourceStatus" class="status-list"></div>
+          </section>
+        </div>
+        <div class="grid-two">
+          <section class="panel">
+            <h3>Recent Server Checks</h3>
+            <div id="recentServers" class="compact-list"></div>
+          </section>
+          <section class="panel">
+            <h3>Recent Evidence Logs</h3>
+            <div id="recentEvidence" class="compact-list"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <h3>Backup Reminder</h3>
+          <p id="backupReminder" class="subtle"></p>
+        </section>
+      </section>
+
+      <section id="lookup" class="screen">
+        <div class="screen-title">
+          <div>
+            <p class="eyebrow">public-source workflow</p>
+            <h2>Player Lookup</h2>
+          </div>
+          <span class="badge neutral">manual-first</span>
+        </div>
+        <div class="grid-two">
+          <form id="lookupForm" class="panel form-grid">
+            <label>Player name<input id="lookupName" required type="text"></label>
+            <label>Platform<select id="lookupPlatform"></select></label>
+            <label>Optional player ID<input id="lookupPlayerId" type="text"></label>
+            <label>Server name<input id="lookupServer" type="text"></label>
+            <label>Map<select id="lookupMap"></select></label>
+            <label class="full">Notes<textarea id="lookupNotes" rows="3"></textarea></label>
+            <label class="full">Manual paste/import<textarea id="manualPaste" rows="5" placeholder="Paste Statbits summary or manually copied public stats here."></textarea></label>
+            <div class="button-row full">
+              <button type="button" id="generateLinks">Generate source links</button>
+              <button type="button" id="tryFetch">Try Statbits fetch</button>
+              <button type="button" id="addFromLookup">Add player to watchlist</button>
+              <button type="button" id="copyLinks" class="secondary">Copy source links</button>
+              <button type="button" id="clearLookup" class="secondary">Clear lookup</button>
+            </div>
+          </form>
+          <section class="panel">
+            <h3>Generated Source Links</h3>
+            <div id="lookupLinks" class="link-stack"></div>
+            <h3>Fetch / Paste Result</h3>
+            <pre id="fetchResult" class="output">No fetch attempted.</pre>
+          </section>
+        </div>
+        <section class="panel">
+          <h3>Source Adapter Panel</h3>
+          <div id="sourcePanel" class="adapter-grid"></div>
+        </section>
+      </section>
+
+      <section id="players" class="screen">
+        <div class="screen-title">
+          <div>
+            <p class="eyebrow">profile and triage</p>
+            <h2>Player Profiles</h2>
+          </div>
+          <button id="newPlayer" class="secondary">New Player</button>
+        </div>
+        <div class="grid-two wide-left">
+          <section class="panel">
+            <h3>Watchlist</h3>
+            <div id="playersTable" class="table-wrap"></div>
+          </section>
+          <aside class="panel">
+            <h3>Suspicion Scoring</h3>
+            <div id="scorePanel"></div>
+            <h3>Plane / Vehicle Focus</h3>
+            <div id="vehiclePanel"></div>
+          </aside>
+        </div>
+        <form id="playerForm" class="panel form-grid dense">
+          <input id="playerEditId" type="hidden">
+          <label>Player name<input id="playerName" type="text" required></label>
+          <label>Platform<select id="playerPlatform"></select></label>
+          <label>Player ID<input id="playerPlayerId" type="text"></label>
+          <label>Report status<select id="playerReportStatus"></select></label>
+          <label>Server/context<input id="playerServerName" type="text"></label>
+          <label>Map<select id="playerMap"></select></label>
+          <label>K/D<input id="playerKd" type="text" inputmode="decimal"></label>
+          <label>KPM<input id="playerKpm" type="text" inputmode="decimal"></label>
+          <label>SPM<input id="playerSpm" type="text" inputmode="decimal"></label>
+          <label>Accuracy %<input id="playerAccuracy" type="text" inputmode="decimal"></label>
+          <label>Headshot %<input id="playerHeadshot" type="text" inputmode="decimal"></label>
+          <label>Kills<input id="playerKills" type="text" inputmode="numeric"></label>
+          <label>Deaths<input id="playerDeaths" type="text" inputmode="numeric"></label>
+          <label>Rank<input id="playerRank" type="text"></label>
+          <label>Hours played<input id="playerHoursPlayed" type="text" inputmode="decimal"></label>
+          <label>Plane hours<input id="playerPlaneHours" type="text" inputmode="decimal"></label>
+          <label>Plane kills<input id="playerPlaneKills" type="text" inputmode="numeric"></label>
+          <label>Plane KPM<input id="playerPlaneKpm" type="text" inputmode="decimal"></label>
+          <label>Tank hours<input id="playerTankHours" type="text" inputmode="decimal"></label>
+          <label>Tank kills<input id="playerTankKills" type="text" inputmode="numeric"></label>
+          <label>Vehicle kills<input id="playerVehicleKills" type="text" inputmode="numeric"></label>
+          <label>Favorite vehicle<input id="playerFavoriteVehicle" type="text"></label>
+          <label>Favorite weapon<input id="playerFavoriteWeapon" type="text"></label>
+          <label>BFVHackers status<input id="playerBfvhackersStatus" type="text"></label>
+          <label>BFBan status<input id="playerBfbanStatus" type="text"></label>
+          <label>Video evidence link<input id="playerVideoEvidenceLink" type="url"></label>
+          <label class="full">Source links<textarea id="playerSourceLinks" rows="3"></textarea></label>
+          <label class="full">Server/context notes<textarea id="playerContextNotes" rows="3"></textarea></label>
+          <label class="full">Suspicious weapon stats notes<textarea id="playerSuspiciousWeaponNotes" rows="3"></textarea></label>
+          <label class="full">Suspicious vehicle stats notes<textarea id="playerSuspiciousVehicleNotes" rows="3"></textarea></label>
+          <label class="full">Vehicle headshot notes<textarea id="playerVehicleHeadshotNotes" rows="2"></textarea></label>
+          <label class="full">Screenshot note<textarea id="playerScreenshotNote" rows="2"></textarea></label>
+          <label class="full">Scoreboard note<textarea id="playerScoreboardNote" rows="2"></textarea></label>
+          <label class="full">Observed behavior<textarea id="playerObservedBehavior" rows="3"></textarea></label>
+          <div class="button-row full">
+            <button type="submit">Save Player</button>
+            <button type="button" id="duplicatePlayer" class="secondary">Duplicate</button>
+            <button type="button" id="deletePlayer" class="danger">Delete</button>
+            <button type="button" id="copyPlayerSummary" class="secondary">Copy Summary</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="servers" class="screen">
+        <div class="screen-title">
+          <div>
+            <p class="eyebrow">session notes</p>
+            <h2>Server Checks</h2>
+          </div>
+        </div>
+        <form id="serverForm" class="panel form-grid">
+          <input id="serverEditId" type="hidden">
+          <label>Date/time<input id="serverDateTime" type="datetime-local"></label>
+          <label>Server name<input id="serverName" type="text"></label>
+          <label>Region<input id="serverRegion" type="text"></label>
+          <label>Map<select id="serverMap"></select></label>
+          <label>Mode<input id="serverMode" type="text"></label>
+          <label>Suspected players<input id="serverSuspectedPlayers" type="text"></label>
+          <label class="full">Link player profiles<select id="serverLinkedPlayers" multiple></select></label>
+          <label class="full">Strong normal players<textarea id="serverStrongNormalPlayers" rows="2"></textarea></label>
+          <label class="full">Observed suspicious behavior<textarea id="serverObservedBehavior" rows="3"></textarea></label>
+          <label class="full">Disconnect/network notes<textarea id="serverDisconnectNotes" rows="2"></textarea></label>
+          <label class="full">Screenshot/video references<textarea id="serverEvidenceRefs" rows="2"></textarea></label>
+          <label class="full">Final notes<textarea id="serverFinalNotes" rows="3"></textarea></label>
+          <div class="button-row full">
+            <button type="submit">Save Server Check</button>
+            <button type="button" id="copyServerSummary" class="secondary">Copy Summary</button>
+            <button type="button" id="clearServerForm" class="secondary">Clear</button>
+          </div>
+        </form>
+        <div id="serverList" class="panel table-wrap"></div>
+      </section>
+
+      <section id="evidence" class="screen">
+        <div class="screen-title">
+          <div>
+            <p class="eyebrow">evidence ledger</p>
+            <h2>Evidence Log</h2>
+          </div>
+        </div>
+        <div class="panel inline-form">
+          <select id="evidenceFilterPlayer"><option value="">All players</option></select>
+          <select id="evidenceFilterStatus"><option value="">All report statuses</option></select>
+        </div>
+        <form id="evidenceForm" class="panel form-grid">
+          <input id="evidenceEditId" type="hidden">
+          <label>Player<input id="evidencePlayer" type="text"></label>
+          <label>Date/time<input id="evidenceDateTime" type="datetime-local"></label>
+          <label>Server<input id="evidenceServer" type="text"></label>
+          <label>Map<select id="evidenceMap"></select></label>
+          <label>Weapon/vehicle used<input id="evidenceWeaponVehicleUsed" type="text"></label>
+          <label>Report status<select id="evidenceReportStatus"></select></label>
+          <label class="full">Observed behavior<textarea id="evidenceObservedBehavior" rows="3"></textarea></label>
+          <label class="full">Kill card notes<textarea id="evidenceKillCardNotes" rows="2"></textarea></label>
+          <label class="full">Scoreboard notes<textarea id="evidenceScoreboardNotes" rows="2"></textarea></label>
+          <label class="full">Screenshot filename/note<textarea id="evidenceScreenshotNote" rows="2"></textarea></label>
+          <label class="full">Video link<input id="evidenceVideoLink" type="url"></label>
+          <label class="full">Source links<textarea id="evidenceSourceLinks" rows="2"></textarea></label>
+          <label class="full">Follow-up notes<textarea id="evidenceFollowUpNotes" rows="2"></textarea></label>
+          <div class="button-row full">
+            <button type="submit">Save Evidence</button>
+            <button type="button" id="copyEvidenceSummary" class="secondary">Copy Evidence Summary</button>
+            <button type="button" id="deleteEvidence" class="danger">Delete</button>
+            <button type="button" id="clearEvidenceForm" class="secondary">Clear</button>
+          </div>
+        </form>
+        <div id="evidenceList" class="panel table-wrap"></div>
+      </section>
+
+      <section id="report" class="screen">
+        <div class="screen-title">
+          <div>
+            <p class="eyebrow">neutral wording</p>
+            <h2>Official Report Helper</h2>
+          </div>
+        </div>
+        <form id="reportForm" class="panel form-grid">
+          <label>Player name<input id="reportPlayerName" type="text"></label>
+          <label>Server / map / date<input id="reportContext" type="text"></label>
+          <label class="full">Observed behavior<textarea id="reportBehavior" rows="3"></textarea></label>
+          <label class="full">Evidence available<textarea id="reportEvidence" rows="3"></textarea></label>
+          <label class="full">Links / notes<textarea id="reportLinks" rows="3"></textarea></label>
+          <div class="button-row full">
+            <button type="button" id="generateReport">Generate Report Text</button>
+            <button type="button" id="copyReport" class="secondary">Copy Report</button>
+          </div>
+        </form>
+        <section class="panel">
+          <h3>Generated Text</h3>
+          <pre id="reportOutput" class="output"></pre>
+          <p class="subtle">Use official in-game/profile reporting tools. Attach screenshot/video where possible.</p>
+        </section>
+      </section>
+
+      <section id="importExport" class="screen">
+        <div class="screen-title">
+          <div>
+            <p class="eyebrow">portable local data</p>
+            <h2>Import / Export</h2>
+          </div>
+        </div>
+        <section class="panel">
+          <div class="button-row">
+            <button id="exportJson">Export all local data as JSON</button>
+            <button id="importJson" class="secondary">Import JSON</button>
+            <button id="copyCurrentReport" class="secondary">Copy current player report</button>
+            <button id="copyCurrentLinks" class="secondary">Copy source links</button>
+            <button id="clearAllData" class="danger">Clear all local data</button>
+          </div>
+          <textarea id="jsonBox" rows="18" placeholder="Export appears here. Paste JSON here before importing."></textarea>
+        </section>
+      </section>
+
+      <section id="settings" class="screen">
+        <div class="screen-title">
+          <div>
+            <p class="eyebrow">boundaries</p>
+            <h2>Settings</h2>
+          </div>
+        </div>
+        <section class="panel">
+          <h3>Project Boundaries</h3>
+          <ul class="clean-list">
+            <li>Manual/public-source only. No private scraping, no login scraping, no bypasses, no hidden polling.</li>
+            <li>No harassment, doxxing, mass reporting, monetization, ads, cookies, tracking, or external assets.</li>
+            <li>Live fetch is optional and may fail because of CORS, downtime, invalid players, or response changes.</li>
+          </ul>
+        </section>
+        <section class="panel">
+          <h3>Local Storage</h3>
+          <p id="storageSummary" class="subtle"></p>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
