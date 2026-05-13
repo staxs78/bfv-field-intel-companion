@@ -14,7 +14,7 @@ Supported platforms: `pc`, `ps4`, `xboxone`
 
 The diagnostics and sources endpoints return adapter URLs, HTTP status, content type, raw previews, parse status, usable fields, source status, and readable errors. They are for debugging public no-auth source behavior only and expose no secrets.
 
-The Worker currently treats GameTools documented BFV endpoints as fetch sources and keeps BFVHackers, BFBan, Battlefield Tracker, and EA as link/manual sources. It does not scrape protected pages or convert community labels into automatic certainty claims.
+The Worker currently treats GameTools documented BFV endpoints and the BFVHackers documented public API as fetch sources where they return usable public stats. BFBan, Battlefield Tracker, and EA are kept as link/manual sources. It does not scrape protected pages or convert community labels into automatic certainty claims.
 
 ## Option A - Deploy With Cloudflare Plugin
 

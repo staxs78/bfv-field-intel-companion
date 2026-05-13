@@ -397,7 +397,8 @@
         const fallbackLinks = Array.isArray(payload.links) ? payload.links : currentLinks;
         currentLinks = fallbackLinks.length ? fallbackLinks : currentLinks;
         $("lookupLinks").innerHTML = renderLinks(currentLinks);
-        $("fetchResult").textContent = `Live fetch reached Worker, but public source returned no usable stats.
+        $("fetchResult").textContent = `Worker reached: yes
+Live fetch reached Worker, but public source returned no usable stats.
 
 ${payload.error || D.disclaimers.workerFetch}
 
@@ -437,7 +438,8 @@ ${JSON.stringify(parsed, null, 2)}
 ${D.disclaimers.primary}`;
       toast("Live fetch parsed. Review before saving.");
     } catch (error) {
-      $("fetchResult").textContent = `${D.disclaimers.workerFetch}
+      $("fetchResult").textContent = `Worker reached: no
+${D.disclaimers.workerFetch}
 
 Reason: ${error.message || error}
 
@@ -548,7 +550,10 @@ ${formatLinks(currentLinks)}`;
     if (parsed && Object.keys(parsed).length) {
       lastLookupStats = parsed;
       applyParsedStatsToLookup(parsed);
-      $("fetchResult").textContent = `Manual paste parsed:\n${JSON.stringify(parsed, null, 2)}`;
+      $("fetchResult").textContent = `${manualParseFeedback(parsed)}
+
+Parsed fields:
+${JSON.stringify(parsed, null, 2)}`;
       toast("Pasted stats parsed. Review before saving.");
       return parsed;
     }
@@ -1352,8 +1357,13 @@ Reminder: ${D.disclaimers.primary}`, "Player summary copied.");
       /([\d,.]+)%\s*headshots?/i
     ]);
     assignIfFound(parsed, "planeKills", value, [/\bplane kills?\s*[:#-]?\s*([\d,.]+)/i, /\baircraft kills?\s*[:#-]?\s*([\d,.]+)/i, /\bair kills?\s*[:#-]?\s*([\d,.]+)/i]);
+    assignIfFound(parsed, "planeHours", value, [/\bplane hours?\s*[:#-]?\s*([\d,.]+)/i, /\baircraft hours?\s*[:#-]?\s*([\d,.]+)/i, /\bair hours?\s*[:#-]?\s*([\d,.]+)/i]);
+    assignIfFound(parsed, "planeKpm", value, [/\bplane KPM\s*[:#-]?\s*([\d,.]+)/i, /\baircraft KPM\s*[:#-]?\s*([\d,.]+)/i, /\bair KPM\s*[:#-]?\s*([\d,.]+)/i]);
     assignIfFound(parsed, "tankKills", value, [/\btank kills?\s*[:#-]?\s*([\d,.]+)/i, /\barmor kills?\s*[:#-]?\s*([\d,.]+)/i, /\barmour kills?\s*[:#-]?\s*([\d,.]+)/i]);
+    assignIfFound(parsed, "tankHours", value, [/\btank hours?\s*[:#-]?\s*([\d,.]+)/i, /\barmor hours?\s*[:#-]?\s*([\d,.]+)/i, /\barmour hours?\s*[:#-]?\s*([\d,.]+)/i]);
     assignIfFound(parsed, "vehicleKills", value, [/\bvehicle kills?\s*[:#-]?\s*([\d,.]+)/i, /\bvehicles kills?\s*[:#-]?\s*([\d,.]+)/i, /\bkills with vehicles\s*[:#-]?\s*([\d,.]+)/i]);
+    assignTextIfFound(parsed, "favoriteWeapon", value, [/\bfavou?rite weapon\s*[:#-]?\s*([^\n\r]+)/i, /\btop weapon\s*[:#-]?\s*([^\n\r]+)/i, /\bmost used weapon\s*[:#-]?\s*([^\n\r]+)/i]);
+    assignTextIfFound(parsed, "favoriteVehicle", value, [/\bfavou?rite vehicle\s*[:#-]?\s*([^\n\r]+)/i, /\btop vehicle\s*[:#-]?\s*([^\n\r]+)/i, /\bmost used vehicle\s*[:#-]?\s*([^\n\r]+)/i]);
     const hours = parseHoursFromText(value);
     if (hours !== null) parsed.hoursPlayed = String(hours);
     return parsed;
@@ -1367,6 +1377,45 @@ Reminder: ${D.disclaimers.primary}`, "Player summary copied.");
         return;
       }
     }
+  }
+
+  function assignTextIfFound(target, key, value, patterns) {
+    for (const pattern of patterns) {
+      const match = value.match(pattern);
+      if (match) {
+        target[key] = match[1].trim().slice(0, 80);
+        return;
+      }
+    }
+  }
+
+  function manualParseFeedback(parsed) {
+    const expected = [
+      "kd",
+      "kpm",
+      "spm",
+      "kills",
+      "deaths",
+      "rank",
+      "hoursPlayed",
+      "accuracy",
+      "headshot",
+      "planeKills",
+      "planeHours",
+      "planeKpm",
+      "tankKills",
+      "tankHours",
+      "vehicleKills",
+      "favoriteWeapon",
+      "favoriteVehicle"
+    ];
+    const detected = expected.filter((field) => text(parsed[field]));
+    const missing = expected.filter((field) => !text(parsed[field]));
+    const confidence = detected.length >= 9 ? "High" : detected.length >= 5 ? "Medium" : "Low";
+    return `Manual paste parsed.
+Fields detected (${detected.length}): ${detected.join(", ") || "none"}
+Fields missing: ${missing.join(", ") || "none"}
+Parser confidence: ${confidence}`;
   }
 
   function parseHoursFromText(value) {

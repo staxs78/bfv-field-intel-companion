@@ -57,7 +57,7 @@ Supported platforms:
 - `ps4`
 - `xboxone`
 
-The Worker returns normalized data when a public no-auth source works, or a clean fallback response with adapter diagnostics when sources are unavailable, blocked, or return unsupported responses. It does not invent stats.
+The Worker returns normalized data when a public no-auth source works, or a clean fallback response with adapter diagnostics when sources are unavailable, blocked, or return unsupported responses. Current fetch adapters use documented public GameTools BFV endpoints and the documented BFVHackers public API. It does not invent stats.
 
 ## GitHub Pages
 
