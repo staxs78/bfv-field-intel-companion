@@ -182,6 +182,7 @@
     $("quickLookup").addEventListener("click", quickLookup);
     $("generateLinks").addEventListener("click", handleGenerateLinks);
     $("tryFetch").addEventListener("click", handleLiveFetch);
+    $("runSourceDiagnostics").addEventListener("click", handleSourceDiagnostics);
     $("addFromLookup").addEventListener("click", addFromLookup);
     $("copyLinks").addEventListener("click", () => copyText(formatLinks(currentLinks), "Source links copied."));
     $("clearLookup").addEventListener("click", clearLookup);
@@ -396,7 +397,9 @@
         const fallbackLinks = Array.isArray(payload.links) ? payload.links : currentLinks;
         currentLinks = fallbackLinks.length ? fallbackLinks : currentLinks;
         $("lookupLinks").innerHTML = renderLinks(currentLinks);
-        $("fetchResult").textContent = `${payload.error || D.disclaimers.workerFetch}
+        $("fetchResult").textContent = `Live fetch reached Worker, but public source returned no usable stats.
+
+${payload.error || D.disclaimers.workerFetch}
 
 ${payload.fallback || "Open public source link and paste stats manually."}
 
@@ -407,6 +410,8 @@ ${(payload.warnings || []).join("\n") || "None"}
 
 Adapter diagnostics:
 ${formatAdapterDebug(payload.adapterDebug)}
+
+Next step: open source link or paste copied public stats.
 
 Fallback links:
 ${formatLinks(currentLinks)}`;
@@ -441,6 +446,63 @@ Could be wrong name, private/missing stats, upstream downtime, or unsupported so
 Fallback links:
 ${formatLinks(currentLinks)}`;
       toast(D.disclaimers.workerFetch);
+    }
+  }
+
+  async function handleSourceDiagnostics() {
+    const apiBaseUrl = normalizeApiBaseUrl(state.settings && state.settings.apiBaseUrl);
+    if (!apiBaseUrl) {
+      $("fetchResult").textContent = "Set Settings -> API Base URL before running Worker source diagnostics.";
+      toast("Set an API Base URL first.");
+      return;
+    }
+
+    const player = text($("lookupName").value);
+    if (!player) {
+      toast("Enter a player name first.");
+      return;
+    }
+
+    const platform = $("lookupPlatform").value;
+    currentLinks = buildSourceLinks(player, platform, $("lookupPlayerId").value);
+    $("lookupLinks").innerHTML = renderLinks(currentLinks);
+    $("fetchResult").textContent = "Running source diagnostics...";
+
+    try {
+      const response = await fetch(buildWorkerUrl(apiBaseUrl, player, platform, "/api/sources"), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload) throw new Error("Worker returned malformed JSON.");
+      const sources = Array.isArray(payload.sources) ? payload.sources : [];
+      $("fetchResult").textContent = `Source diagnostics
+Player: ${payload.name || player}
+Platform: ${payload.platform || platform}
+Tested at: ${payload.testedAt || "n/a"}
+
+Warnings:
+${(payload.warnings || []).join("\n") || "None"}
+
+Adapter table:
+${formatAdapterDebug(sources)}
+
+Next step: open source link or paste copied public stats.
+
+Fallback links:
+${formatLinks(currentLinks)}`;
+      toast("Source diagnostics completed.");
+    } catch (error) {
+      $("fetchResult").textContent = `Source diagnostics failed.
+
+Reason: ${error.message || error}
+
+Next step: open source link or paste copied public stats.
+
+Fallback links:
+${formatLinks(currentLinks)}`;
+      toast("Source diagnostics failed.");
     }
   }
 
@@ -1280,18 +1342,18 @@ Reminder: ${D.disclaimers.primary}`, "Player summary copied.");
     ]);
     assignIfFound(parsed, "kpm", value, [/\bKPM\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*KPM/i]);
     assignIfFound(parsed, "spm", value, [/\bSPM\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*SPM/i]);
-    assignIfFound(parsed, "kills", value, [/\bkills?\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*kills?\b/i]);
-    assignIfFound(parsed, "deaths", value, [/\bdeaths?\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*deaths?\b/i]);
-    assignIfFound(parsed, "rank", value, [/\brank\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*rank/i]);
+    assignIfFound(parsed, "kills", value, [/\bkills?\s*[:#-]?\s*([\d,.]+)/i, /\benemies killed\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*kills?\b/i]);
+    assignIfFound(parsed, "deaths", value, [/\bdeaths?\s*[:#-]?\s*([\d,.]+)/i, /\bdeaths taken\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*deaths?\b/i]);
+    assignIfFound(parsed, "rank", value, [/\brank\s*[:#-]?\s*([\d,.]+)/i, /\bcurrent rank\s*(?:is)?\s*[:#-]?\s*([\d,.]+)/i, /([\d,.]+)\s*rank/i]);
     assignIfFound(parsed, "accuracy", value, [/\baccuracy\s*[:#-]?\s*([\d,.]+)%?/i, /([\d,.]+)%\s*accuracy/i]);
     assignIfFound(parsed, "headshot", value, [
       /\bheadshots?\s*[:#-]?\s*([\d,.]+)%?/i,
       /\bHS\s*%?\s*[:#-]?\s*([\d,.]+)%?/i,
       /([\d,.]+)%\s*headshots?/i
     ]);
-    assignIfFound(parsed, "planeKills", value, [/\bplane kills?\s*[:#-]?\s*([\d,.]+)/i, /\bair kills?\s*[:#-]?\s*([\d,.]+)/i]);
-    assignIfFound(parsed, "tankKills", value, [/\btank kills?\s*[:#-]?\s*([\d,.]+)/i, /\barmor kills?\s*[:#-]?\s*([\d,.]+)/i]);
-    assignIfFound(parsed, "vehicleKills", value, [/\bvehicle kills?\s*[:#-]?\s*([\d,.]+)/i, /\bvehicles kills?\s*[:#-]?\s*([\d,.]+)/i]);
+    assignIfFound(parsed, "planeKills", value, [/\bplane kills?\s*[:#-]?\s*([\d,.]+)/i, /\baircraft kills?\s*[:#-]?\s*([\d,.]+)/i, /\bair kills?\s*[:#-]?\s*([\d,.]+)/i]);
+    assignIfFound(parsed, "tankKills", value, [/\btank kills?\s*[:#-]?\s*([\d,.]+)/i, /\barmor kills?\s*[:#-]?\s*([\d,.]+)/i, /\barmour kills?\s*[:#-]?\s*([\d,.]+)/i]);
+    assignIfFound(parsed, "vehicleKills", value, [/\bvehicle kills?\s*[:#-]?\s*([\d,.]+)/i, /\bvehicles kills?\s*[:#-]?\s*([\d,.]+)/i, /\bkills with vehicles\s*[:#-]?\s*([\d,.]+)/i]);
     const hours = parseHoursFromText(value);
     if (hours !== null) parsed.hoursPlayed = String(hours);
     return parsed;
@@ -1324,18 +1386,29 @@ Reminder: ${D.disclaimers.primary}`, "Player summary copied.");
 
   function formatAdapterDebug(adapterDebug) {
     if (!Array.isArray(adapterDebug) || !adapterDebug.length) return "No adapter diagnostics returned.";
+    const rows = adapterDebug.map((item) => {
+      const http = item.httpStatus === null || item.httpStatus === undefined ? "n/a" : String(item.httpStatus);
+      const parsed = item.parsed ? "yes" : "no";
+      const status = text(item.status) || http;
+      const fields = Array.isArray(item.usableFields) && item.usableFields.length ? item.usableFields.join(", ") : "none";
+      return `${pad(item.name || "unknown source", 30)} ${pad(status, 22)} ${pad(http, 6)} ${pad(parsed, 6)} ${fields}`;
+    });
     return adapterDebug
-      .map((item) => {
+      .map((item, index) => {
         return [
-          `- ${item.name || "unknown adapter"}`,
-          `  status: ${item.httpStatus === null || item.httpStatus === undefined ? "n/a" : item.httpStatus}`,
-          `  url: ${item.url || "n/a"}`,
-          `  parsed: ${item.parsed ? "yes" : "no"}`,
-          `  error: ${item.error || "none"}`,
-          `  raw preview: ${item.rawPreview || "none"}`
-        ].join("\n");
+          index === 0 ? `${pad("Source", 30)} ${pad("Status", 22)} ${pad("HTTP", 6)} ${pad("Parsed", 6)} Usable fields\n${"-".repeat(92)}` : "",
+          rows[index],
+          `  URL tested: ${item.url || "n/a"}`,
+          `  Error: ${item.error || "none"}`,
+          `  Raw preview: ${item.rawPreview || "none"}`
+        ].filter(Boolean).join("\n");
       })
       .join("\n");
+  }
+
+  function pad(value, width) {
+    const clipped = text(value).slice(0, width - 1);
+    return clipped + " ".repeat(Math.max(1, width - clipped.length));
   }
 
   function saveApiBaseUrl() {
@@ -1394,8 +1467,8 @@ Reminder: ${D.disclaimers.primary}`, "Player summary copied.");
     return text(value).replace(/\/+$/, "");
   }
 
-  function buildWorkerUrl(apiBaseUrl, player, platform) {
-    return `${normalizeApiBaseUrl(apiBaseUrl)}/api/player?name=${encode(player)}&platform=${encode(platform || "pc")}`;
+  function buildWorkerUrl(apiBaseUrl, player, platform, path) {
+    return `${normalizeApiBaseUrl(apiBaseUrl)}${path || "/api/player"}?name=${encode(player)}&platform=${encode(platform || "pc")}`;
   }
 
   async function copyText(value, message) {

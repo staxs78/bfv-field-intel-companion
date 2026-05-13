@@ -1,4 +1,5 @@
 const SUPPORTED_PLATFORMS = new Set(["pc", "ps4", "xboxone"]);
+const FETCH_TIMEOUT_MS = 10000;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,7 @@ const sourceTemplates = {
   statbits:
     "https://api.statbits.io/chatmsg/bfv/stats/{platform}/players/{player}/summary-short-a?forceOk=true&errMsg=Source%20unavailable%20or%20blocked",
   statbitsLink: "https://statbits.io/chatmsg-api/battlefield-5/",
+  gametoolsDocs: "https://api.gametools.network/docs",
   gametoolsLink: "https://gametools.network/?game=bfv&platform={platform}&query={player}",
   bfvhackersLink: "https://bfvhackers.com/?search={player}",
   trackerLink: "https://battlefieldtracker.com/bfv/search/{player}",
@@ -18,73 +20,71 @@ const sourceTemplates = {
   eaReportLink: "https://help.ea.com/en/help/faq/report-players-for-cheating-abuse-and-harassment/"
 };
 
-const gametoolsVariants = [
-  {
-    variant: "stats",
-    url: "https://api.gametools.network/bfv/stats/?name={player}&platform={platform}"
-  },
-  {
-    variant: "stats-format-values",
-    url: "https://api.gametools.network/bfv/stats/?format_values=true&name={player}&platform={platform}"
-  },
-  {
-    variant: "all",
-    url: "https://api.gametools.network/bfv/all/?name={player}&platform={platform}"
-  },
-  {
-    variant: "weapons",
-    url: "https://api.gametools.network/bfv/weapons/?name={player}&platform={platform}"
-  },
-  {
-    variant: "vehicles",
-    url: "https://api.gametools.network/bfv/vehicles/?name={player}&platform={platform}"
-  }
+const gametoolsEndpointSpecs = [
+  ["gametools-stats", "https://api.gametools.network/bfv/stats/?name={player}&platform={platform}"],
+  ["gametools-stats-format-values", "https://api.gametools.network/bfv/stats/?format_values=true&name={player}&platform={platform}"],
+  ["gametools-all", "https://api.gametools.network/bfv/all/?format_values=true&name={player}&platform={platform}"],
+  ["gametools-weapons", "https://api.gametools.network/bfv/weapons/?format_values=true&name={player}&platform={platform}"],
+  ["gametools-vehicles", "https://api.gametools.network/bfv/vehicles/?name={player}&platform={platform}"]
 ];
 
-const adapters = [
-  {
-    name: "statbits",
-    enabled: true,
-    buildUrls(name, platform) {
-      return [
-        {
-          name: "statbits",
-          variant: "summary-short-a",
-          url: buildUrl(sourceTemplates.statbits, name, platform)
-        }
-      ];
-    },
-    parse(raw, name, platform) {
-      if (typeof raw !== "string") return null;
-      const value = raw.trim();
-      if (!value || /source unavailable|blocked|failed|error|not found|invalid|could not/i.test(value)) {
-        return null;
-      }
-      const player = parseStatsText(value, name, platform);
-      return hasAnyStat(player)
-        ? { player, raw: value, warnings: ["Parsed from Statbits text response; review fields before saving."] }
-        : null;
-    }
+const statbitsAdapter = {
+  name: "statbits",
+  mode: "fetch",
+  buildUrl(name, platform) {
+    return buildUrl(sourceTemplates.statbits, name, platform);
   },
-  {
-    name: "gametools",
-    enabled: true,
-    buildUrls(name, platform) {
-      return gametoolsVariants.map((item) => ({
-        name: "gametools",
-        variant: item.variant,
-        url: buildUrl(item.url, name, platform)
-      }));
-    },
-    parse(raw, name, platform) {
-      const root = raw && typeof raw === "object" ? raw : {};
-      const player = parseGameToolsObject(root, name, platform);
-      return hasAnyStat(player)
-        ? { player, raw: root, warnings: ["Parsed defensively from GameTools JSON; missing fields are left null."] }
-        : null;
+  parse(raw, name, platform, debug) {
+    if (typeof raw !== "string") return null;
+    const value = raw.trim();
+    if (!value) return null;
+    if (/source unavailable|blocked|failed|error|not found|invalid|could not/i.test(value)) {
+      debug.error = `Text response was not usable stats: ${value.slice(0, 160)}`;
+      return null;
     }
+    const player = parseStatsText(value, name, platform);
+    return hasAnyStat(player)
+      ? { player, raw: value, warnings: ["Parsed from Statbits text response; review fields before saving."] }
+      : null;
+  },
+  normalize(parsed, name, platform) {
+    return normalizePlayer(parsed.player, name, platform);
   }
+};
+
+const gametoolsAdapters = gametoolsEndpointSpecs.map(([name, template]) => ({
+  name,
+  mode: "fetch",
+  buildUrl(playerName, platform) {
+    return buildUrl(template, playerName, platform);
+  },
+  parse(raw, playerName, platform) {
+    const root = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    if (!Object.keys(root).length || root.errors || root.error) return null;
+    const player = parseGameToolsObject(root, playerName, platform);
+    return hasAnyStat(player)
+      ? { player, raw: root, warnings: ["Parsed defensively from GameTools JSON; missing fields are left null."] }
+      : null;
+  },
+  normalize(parsed, playerName, platform) {
+    return normalizePlayer(parsed.player, playerName, platform);
+  }
+}));
+
+const linkManualAdapters = [
+  linkManualAdapter("bfvhackers", "BFVHackers public page", (name) => sourceTemplates.bfvhackersLink.replace("{player}", encodeURIComponent(name))),
+  linkManualAdapter("bfban", "BFBan public page", (name) => sourceTemplates.bfbanLink.replace("{player}", encodeURIComponent(name))),
+  linkManualAdapter("tracker", "Battlefield Tracker public page", (name) => sourceTemplates.trackerLink.replace("{player}", encodeURIComponent(name))),
+  linkManualAdapter("gametools-site", "GameTools public website", (name, platform) =>
+    sourceTemplates.gametoolsLink
+      .replace("{platform}", encodeURIComponent(platform))
+      .replace("{player}", encodeURIComponent(name))
+  ),
+  linkManualAdapter("ea-report", "EA report/help page", () => sourceTemplates.eaReportLink)
 ];
+
+const fetchAdapters = [statbitsAdapter, ...gametoolsAdapters];
+const sourceAdapters = [...fetchAdapters, ...linkManualAdapters];
 
 export default {
   async fetch(request) {
@@ -97,7 +97,7 @@ export default {
     }
 
     const url = new URL(request.url);
-    if (!["/api/player", "/api/diagnostics"].includes(url.pathname)) {
+    if (!["/api/player", "/api/diagnostics", "/api/sources"].includes(url.pathname)) {
       return json({ ok: false, error: "Not found", fallback: "Use /api/player?name=PLAYERNAME&platform=pc", links: [] }, 404);
     }
 
@@ -106,7 +106,19 @@ export default {
     const validation = validateInput(name, platform);
     if (validation) return json(validation.body, validation.status);
 
-    const result = await runAdapters(name, platform);
+    if (url.pathname === "/api/sources") {
+      const result = await runSources(name, platform, { includeManual: true, stopOnSuccess: false });
+      return json({
+        ok: true,
+        testedAt: new Date().toISOString(),
+        name,
+        platform,
+        warnings: sourceDiscoveryWarnings(),
+        sources: result.sources
+      });
+    }
+
+    const result = await runSources(name, platform, { includeManual: false, stopOnSuccess: url.pathname === "/api/player" });
 
     if (url.pathname === "/api/diagnostics") {
       return json({
@@ -114,7 +126,7 @@ export default {
         player: name,
         platform,
         testedAt: new Date().toISOString(),
-        adapters: result.adapterDebug
+        adapters: result.sources
       });
     }
 
@@ -125,7 +137,7 @@ export default {
         player: normalizePlayer(result.player, name, platform),
         raw: result.raw,
         warnings: result.warnings,
-        adapterDebug: result.adapterDebug
+        adapterDebug: result.sources
       });
     }
 
@@ -136,75 +148,165 @@ export default {
       links: fallbackLinks(name, platform),
       warnings: [
         "Could be wrong name, private/missing stats, upstream downtime, or unsupported source response.",
+        ...sourceDiscoveryWarnings(),
         ...result.warnings
       ],
-      adapterDebug: result.adapterDebug
+      adapterDebug: result.sources
     }, 200);
   }
 };
 
-async function runAdapters(name, platform) {
-  const adapterDebug = [];
+async function runSources(name, platform, options = {}) {
+  const includeManual = Boolean(options.includeManual);
+  const stopOnSuccess = Boolean(options.stopOnSuccess);
+  const adapters = includeManual ? sourceAdapters : fetchAdapters;
+  const sources = [];
   const warnings = [];
 
   for (const adapter of adapters) {
-    if (!adapter.enabled) continue;
+    const result = adapter.mode === "fetch"
+      ? await fetchAndParse(adapter, name, platform)
+      : manualSource(adapter, name, platform);
 
-    for (const candidate of adapter.buildUrls(name, platform)) {
-      const debug = {
-        name: candidate.variant ? `${adapter.name}:${candidate.variant}` : adapter.name,
-        url: candidate.url,
-        httpStatus: null,
-        contentType: "",
-        rawPreview: "",
-        parsed: false,
-        error: ""
-      };
+    sources.push(result.debug);
+    if (result.warning) warnings.push(result.warning);
 
-      try {
-        const response = await fetch(candidate.url, {
-          method: "GET",
-          headers: { Accept: "application/json, text/plain;q=0.9, */*;q=0.5" }
-        });
-        debug.httpStatus = response.status;
-        debug.contentType = response.headers.get("content-type") || "";
-        const rawText = await response.text();
-        debug.rawPreview = rawText.slice(0, 500);
-
-        if (!response.ok) {
-          debug.error = `HTTP ${response.status}`;
-          adapterDebug.push(debug);
-          warnings.push(`${debug.name}: HTTP ${response.status}`);
-          continue;
-        }
-
-        const raw = parseRawByContentType(rawText, debug.contentType);
-        const parsed = adapter.parse(raw, name, platform);
-        if (parsed && parsed.player) {
-          debug.parsed = true;
-          adapterDebug.push(debug);
-          return {
-            success: true,
-            source: debug.name,
-            player: parsed.player,
-            raw: parsed.raw,
-            warnings: [...warnings, ...(parsed.warnings || [])],
-            adapterDebug
-          };
-        }
-
-        debug.error = "No usable stats parsed";
-        adapterDebug.push(debug);
-        warnings.push(`${debug.name}: no usable stats parsed`);
-      } catch (error) {
-        debug.error = readableError(error);
-        adapterDebug.push(debug);
-        warnings.push(`${debug.name}: ${debug.error}`);
+    if (result.player && result.debug.parsed) {
+      if (stopOnSuccess) {
+        return {
+          success: true,
+          source: adapter.name,
+          player: result.player,
+          raw: result.raw,
+          warnings: [...warnings, ...(result.warnings || [])],
+          sources
+        };
       }
     }
   }
 
-  return { success: false, warnings, adapterDebug };
+  const firstWorking = sources.find((source) => source.parsed);
+  if (!stopOnSuccess && firstWorking) {
+    const successful = sources.find((source) => source.parsed);
+    return { success: true, source: successful.name, warnings, sources };
+  }
+
+  return { success: false, warnings, sources };
+}
+
+async function fetchAndParse(adapter, name, platform) {
+  const url = adapter.buildUrl(name, platform);
+  const debug = baseDebug(adapter.name, adapter.mode, url);
+
+  try {
+    const response = await fetchWithTimeout(url);
+    debug.httpStatus = response.status;
+    debug.contentType = response.headers.get("content-type") || "";
+    const rawText = await response.text();
+    debug.rawPreview = rawText.slice(0, 500);
+
+    if (!response.ok) {
+      debug.status = classifyHttpStatus(response.status);
+      debug.error = `HTTP ${response.status}`;
+      return { debug, warning: `${adapter.name}: ${debug.error}` };
+    }
+
+    const raw = parseRawByContentType(rawText, debug.contentType);
+    const parsed = adapter.parse(raw, name, platform, debug);
+    if (!parsed || !parsed.player) {
+      debug.status = debug.status === "not tested" ? "no usable stats" : debug.status;
+      debug.error = debug.error || "No usable stats parsed";
+      return { debug, warning: `${adapter.name}: ${debug.error}` };
+    }
+
+    const player = adapter.normalize(parsed, name, platform);
+    debug.usableFields = usableFields(player);
+    debug.parsed = debug.usableFields.length > 0;
+    debug.status = debug.parsed ? "working" : "no usable stats";
+    if (!debug.parsed) debug.error = "No normalized stat fields were usable";
+
+    return {
+      debug,
+      player,
+      raw: parsed.raw,
+      warnings: parsed.warnings || [],
+      warning: debug.parsed ? "" : `${adapter.name}: ${debug.error}`
+    };
+  } catch (error) {
+    debug.status = "upstream unavailable";
+    debug.error = readableError(error);
+    return { debug, warning: `${adapter.name}: ${debug.error}` };
+  }
+}
+
+function manualSource(adapter, name, platform) {
+  return {
+    debug: {
+      ...baseDebug(adapter.name, adapter.mode, adapter.buildUrl(name, platform)),
+      status: "link/manual only",
+      error: "No stable public no-auth stat endpoint is used for this source. Open the link and paste public stats or notes manually."
+    }
+  };
+}
+
+function baseDebug(name, mode, url) {
+  return {
+    name,
+    mode,
+    url,
+    httpStatus: null,
+    contentType: "",
+    rawPreview: "",
+    parsed: false,
+    usableFields: [],
+    status: mode === "link-manual" ? "link/manual only" : "not tested",
+    error: ""
+  };
+}
+
+function linkManualAdapter(name, label, buildUrlFn) {
+  return {
+    name,
+    label,
+    mode: "link-manual",
+    buildUrl: buildUrlFn,
+    fetchAndParse() {
+      return null;
+    },
+    parse() {
+      return null;
+    },
+    normalize() {
+      return null;
+    }
+  };
+}
+
+async function fetchWithTimeout(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("Request timed out"), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { Accept: "application/json, text/plain;q=0.9, */*;q=0.5" }
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function classifyHttpStatus(status) {
+  if (status === 401 || status === 403) return "blocked";
+  if (status === 502 || status === 503 || status === 504) return "upstream unavailable";
+  return "no usable stats";
+}
+
+function sourceDiscoveryWarnings() {
+  return [
+    "GameTools public OpenAPI documents BFV stats endpoints with name, playerid, or oid parameters; no separate BFV persona resolver endpoint was verified.",
+    "BFVHackers, BFBan, Battlefield Tracker, and EA are kept as link/manual sources here."
+  ];
 }
 
 function parseRawByContentType(rawText, contentType) {
@@ -330,7 +432,7 @@ function parseGameToolsObject(root, name, platform) {
   const player = emptyPlayer(name, platform);
   player.name = asText(findValue(root, ["name", "userName", "username", "displayName", "personaName"])) || name;
   player.platform = asText(findValue(root, ["platform"])) || platform;
-  player.id = asText(findValue(root, ["id", "playerId", "personaId", "nucleusId"]));
+  player.id = asText(findValue(root, ["id", "playerId", "personaId", "nucleusId", "userId"]));
   player.rank = asNumber(findValue(root, ["rank", "rankNumber"]));
   player.kills = asNumber(findValue(root, ["kills", "killCount"]));
   player.deaths = asNumber(findValue(root, ["deaths", "deathCount"]));
@@ -342,8 +444,8 @@ function parseGameToolsObject(root, name, platform) {
   player.hoursPlayed =
     asNumber(findValue(root, ["hoursPlayed", "timePlayedHours", "playtimeHours"])) ||
     secondsToHours(findValue(root, ["timePlayed", "secondsPlayed", "playtime"]));
-  player.favoriteWeapon = asText(findValue(root, ["favoriteWeapon", "favoriteWeaponName"]));
-  player.favoriteVehicle = asText(findValue(root, ["favoriteVehicle", "favoriteVehicleName"]));
+  player.favoriteWeapon = findNamedEntry(root, ["weapons", "weaponStats"]) || asText(findValue(root, ["favoriteWeapon", "favoriteWeaponName"]));
+  player.favoriteVehicle = findNamedEntry(root, ["vehicles", "vehicleStats"]) || asText(findValue(root, ["favoriteVehicle", "favoriteVehicleName"]));
   player.planeHours = asNumber(findValue(root, ["planeHours", "airHours"]));
   player.planeKills = asNumber(findValue(root, ["planeKills", "airKills"]));
   player.planeKpm = asNumber(findValue(root, ["planeKpm", "airKpm"]));
@@ -351,6 +453,16 @@ function parseGameToolsObject(root, name, platform) {
   player.tankKills = asNumber(findValue(root, ["tankKills", "armorKills"]));
   player.vehicleKills = asNumber(findValue(root, ["vehicleKills", "vehiclesKills"]));
   return player;
+}
+
+function findNamedEntry(root, collectionKeys) {
+  const collection = findValue(root, collectionKeys);
+  if (!Array.isArray(collection) || !collection.length) return "";
+  const sorted = collection
+    .filter((item) => item && typeof item === "object")
+    .slice()
+    .sort((a, b) => (asNumber(findValue(b, ["kills"])) || 0) - (asNumber(findValue(a, ["kills"])) || 0));
+  return asText(findValue(sorted[0], ["name", "weaponName", "vehicleName"]));
 }
 
 function findValue(root, keys) {
@@ -362,7 +474,7 @@ function findValue(root, keys) {
     if (!item || typeof item !== "object" || seen.has(item)) continue;
     seen.add(item);
     if (Array.isArray(item)) {
-      item.slice(0, 30).forEach((child) => queue.push(child));
+      item.slice(0, 40).forEach((child) => queue.push(child));
       continue;
     }
     for (const [key, value] of Object.entries(item)) {
@@ -390,6 +502,8 @@ function normalizePlayer(player, name, platform) {
     accuracy: asNullableNumber(player.accuracy),
     headshotPercent: asNullableNumber(player.headshotPercent),
     hoursPlayed: asNullableNumber(player.hoursPlayed),
+    favoriteWeapon: asText(player.favoriteWeapon),
+    favoriteVehicle: asText(player.favoriteVehicle),
     planeHours: asNullableNumber(player.planeHours),
     planeKills: asNullableNumber(player.planeKills),
     planeKpm: asNullableNumber(player.planeKpm),
@@ -400,6 +514,10 @@ function normalizePlayer(player, name, platform) {
 }
 
 function hasAnyStat(player) {
+  return usableFields(player).length > 0;
+}
+
+function usableFields(player) {
   return [
     "rank",
     "kills",
@@ -416,7 +534,7 @@ function hasAnyStat(player) {
     "tankHours",
     "tankKills",
     "vehicleKills"
-  ].some((key) => player[key] !== null && player[key] !== undefined && player[key] !== "");
+  ].filter((key) => player[key] !== null && player[key] !== undefined && player[key] !== "");
 }
 
 function fallbackLinks(name, platform) {
@@ -424,6 +542,7 @@ function fallbackLinks(name, platform) {
   const plat = encodeURIComponent(SUPPORTED_PLATFORMS.has(platform) ? platform : "pc");
   return [
     { label: "Statbits BFV docs", url: sourceTemplates.statbitsLink },
+    { label: "GameTools API docs", url: sourceTemplates.gametoolsDocs },
     { label: "GameTools public search/template", url: sourceTemplates.gametoolsLink.replace("{platform}", plat).replace("{player}", player) },
     { label: "BFVHackers search/check", url: sourceTemplates.bfvhackersLink.replace("{player}", player) },
     { label: "Battlefield Tracker search/profile", url: sourceTemplates.trackerLink.replace("{player}", player) },
@@ -474,6 +593,7 @@ function round(value) {
 }
 
 function readableError(error) {
+  if (error && error.name === "AbortError") return "Request timed out";
   const message = error && error.message ? error.message : String(error || "Unknown error");
   return message.slice(0, 180);
 }

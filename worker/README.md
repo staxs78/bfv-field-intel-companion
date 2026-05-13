@@ -8,9 +8,13 @@ This Cloudflare Worker provides an optional public-stat fetch layer for the stat
 
 `GET /api/diagnostics?name=PLAYERNAME&platform=pc`
 
+`GET /api/sources?name=PLAYERNAME&platform=pc`
+
 Supported platforms: `pc`, `ps4`, `xboxone`
 
-The diagnostics endpoint returns adapter URLs, HTTP status, content type, raw previews, parse status, and readable errors. It is for debugging public no-auth source behavior only and exposes no secrets.
+The diagnostics and sources endpoints return adapter URLs, HTTP status, content type, raw previews, parse status, usable fields, source status, and readable errors. They are for debugging public no-auth source behavior only and expose no secrets.
+
+The Worker currently treats GameTools documented BFV endpoints as fetch sources and keeps BFVHackers, BFBan, Battlefield Tracker, and EA as link/manual sources. It does not scrape protected pages or convert community labels into automatic certainty claims.
 
 ## Option A - Deploy With Cloudflare Plugin
 

@@ -30,6 +30,7 @@ The optional Cloudflare Worker in `worker/` can attempt a single public stat loo
 4. Go to Settings -> API Base URL.
 5. Paste the Worker URL and save.
 6. Use Player Lookup -> Try Live Fetch.
+7. Use Player Lookup -> Run source diagnostics if public sources return no usable stats.
 
 If live fetch fails, the app stays useful: open the public source links and paste stats manually.
 
@@ -46,13 +47,17 @@ If live fetch fails, the app stays useful: open the public source links and past
 
 `GET /api/player?name=PLAYERNAME&platform=pc`
 
+`GET /api/diagnostics?name=PLAYERNAME&platform=pc`
+
+`GET /api/sources?name=PLAYERNAME&platform=pc`
+
 Supported platforms:
 
 - `pc`
 - `ps4`
 - `xboxone`
 
-The Worker returns normalized data when a public no-auth source works, or a clean fallback response when sources are unavailable or blocked. It does not invent stats.
+The Worker returns normalized data when a public no-auth source works, or a clean fallback response with adapter diagnostics when sources are unavailable, blocked, or return unsupported responses. It does not invent stats.
 
 ## GitHub Pages
 
